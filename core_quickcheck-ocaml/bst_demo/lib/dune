@@ -1,0 +1,5 @@
+(library
+ (name bst_demo)
+ (preprocess
+  (pps ppx_jane))
+ (libraries core))

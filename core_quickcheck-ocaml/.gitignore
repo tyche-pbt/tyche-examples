@@ -1,0 +1,23 @@
+# Compiled output
+*.cmi
+*.cmo
+*.cmt
+*.cmti
+*.cmx
+*.o
+
+# Build artifacts
+_build/
+_install/
+*.install
+*.uninstall
+
+# Editor files
+*~
+*.swp
+*.swo
+*.merlin
+*.merlin-log
+
+# Dependency directories
+_opam/

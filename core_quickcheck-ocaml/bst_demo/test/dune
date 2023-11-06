@@ -1,0 +1,5 @@
+(test
+ (name bst_demo_test)
+ (preprocess
+  (pps ppx_jane))
+ (libraries bst_demo core yojson core_unix.sys_unix))
