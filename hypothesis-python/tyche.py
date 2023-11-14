@@ -1,17 +1,16 @@
 import json
 import pprint
+import time
 import traceback
-import coverage
 import websocket
 
 global features
 features = {}
 
 
-def features_for_value(value, feature_type):
+def features_for_value(value):
     dicts = [(fname, f) for ty, feats in features.items()
-             for fname, f in feats.items()
-             if isinstance(value, ty) and type(f(value)) == feature_type]
+             for fname, f in feats.items() if isinstance(value, ty)]
     return dict(dicts)
 
 
@@ -27,62 +26,45 @@ def analyze(f, port):
 
         f.hypothesis.inner_test = new_inner
 
-        cov = coverage.Coverage(omit=["tyche.py", "hypothesis/*"],
-                                check_preimported=True)
+        run_start = int(time.time())
         try:
-            with cov.collect():
-                f()
+            f()
         except:
-            return {
-                "properties": {
-                    f.__name__: {
-                        "outcome": "propertyFailed",
-                        "counterExample": {
-                            "item": str(ls[-1]),
-                            "features": {},
-                            "bucketings": {}
-                        },
-                        "message": traceback.format_exc()
-                    }
-                }
-            }
+            return [{
+                "type": "test_case",
+                "run_start": run_start,
+                "property": f.__name__,
+                "status": "failed",
+                "status_reason": traceback.format_exc(),
+                "representation": str(ls[-1]),
+                "how_generated": None,
+                "features": {},
+                "coverage": "no_coverage_info",
+                "metadata": {}
+            }]
 
-        cov_report = []
-        for file in cov.get_data().measured_files():
-            (_, executable, missing, _) = cov.analysis(file)
-            if len(executable) == 0:
-                continue
-            cov_report.append((file, {
-                "hitLines": [i for i in executable if i not in missing],
-                "missedLines":
-                missing,
-            }))
-
-        samples = [{
-            "item":
-            pprint.pformat(list(l.values())[0], width=50, compact=True)
-            if len(l) == 1 else pprint.pformat(l, width=50, compact=True),
+        return [{
+            "type":
+            "test_case",
+            "run_start":
+            run_start,
+            "property":
+            f.__name__,
+            "status":
+            "passed",
+            "status_reason":
+            traceback.format_exc(),
+            "representation":
+            pprint.pformat(list(l.values()), width=50, compact=True),
             "features":
             dict([(f"{k}_{feature}", f(v)) for k, v in l.items()
-                  for feature, f in features_for_value(v, int).items()]),
-            "bucketings":
-            dict([(f"{k}_{bucketing}", f(v)) for k, v in l.items()
-                  for bucketing, f in features_for_value(v, str).items()] +
-                 [(f"{k}_{bucketing}", str(f(v))) for k, v in l.items()
-                  for bucketing, f in features_for_value(v, bool).items()]),
+                  for feature, f in features_for_value(v).items()]),
+            "coverage":
+            "no_coverage_info",
+            "metadata": {}
         } for l in ls]
 
-        return {
-            "properties": {
-                f.__name__: {
-                    "outcome": "propertyPassed",
-                    "coverage": dict(cov_report),
-                    "samples": samples
-                }
-            }
-        }
-
-    report = {"type": "success", "report": compute_report()}
+    report = compute_report()
     ws = websocket.create_connection(f"ws://localhost:{port}")
     ws.send(json.dumps(report))
 

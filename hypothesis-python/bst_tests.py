@@ -1,5 +1,5 @@
 from bst import *
-from hypothesis import assume, given, strategies as st
+from hypothesis import assume, strategies as st
 import hypothesis
 
 import tyche
