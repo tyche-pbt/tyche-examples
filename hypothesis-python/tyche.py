@@ -2,6 +2,7 @@ import json
 import pprint
 import time
 import traceback
+import hypothesis
 import websocket
 
 global features
@@ -67,6 +68,27 @@ def analyze(f, port):
     report = compute_report()
     ws = websocket.create_connection(f"ws://localhost:{port}")
     ws.send(json.dumps(report))
+
+
+def visualize2():
+
+    def decorator(f):
+
+        def wrapper(*args, **kwargs):
+            lines = []
+            hypothesis.internal.observability.TESTCASE_CALLBACKS.append(  # type: ignore
+                lambda test_case: lines.append(test_case))
+            f()
+            try:
+                ws = websocket.create_connection(f"ws://localhost:8181")
+                ws.send(json.dumps(lines))
+                ws.close()
+            except:
+                pass  # TODO
+
+        return wrapper
+
+    return decorator
 
 
 def visualize(port: int = 8181):
