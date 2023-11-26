@@ -28,19 +28,23 @@ def bsts(draw, lo=-10, hi=10):
         return Node(x, draw(bsts(lo, x - 1)), draw(bsts(x + 1, hi)))
 
 
-@tyche.visualize2()
+@tyche.dump_to_file()
 @hypothesis.given(trees(), st.integers())
 def test_insert_valid(tree, new_value):
     hypothesis.target(tree.size())
-    hypothesis.event("bst" if tree.is_binary_search_tree() else "not_bst")
+    hypothesis.event(
+        "is_bst", payload="bst" if tree.is_binary_search_tree() else "not_bst")
     assume(tree.is_binary_search_tree())
     new_tree = tree.insert(new_value)
     assert new_tree.is_binary_search_tree()
 
 
-@tyche.visualize2()
+@tyche.dump_to_file()
 @hypothesis.given(trees(), st.integers())
 def test_insert_post(tree, new_value):
+    hypothesis.target(tree.size())
+    hypothesis.event(
+        "is_bst", payload="bst" if tree.is_binary_search_tree() else "not_bst")
     assume(tree.is_binary_search_tree())
     new_tree = tree.insert(new_value)
     assert new_tree.contains(new_value)

@@ -83,7 +83,30 @@ def visualize2():
                 ws = websocket.create_connection(f"ws://localhost:8181")
                 ws.send(json.dumps(lines))
                 ws.close()
-            except:
+            except Exception as e:
+                print(e)
+                pass  # TODO
+
+        return wrapper
+
+    return decorator
+
+
+def dump_to_file():
+
+    def decorator(f):
+
+        def wrapper(*args, **kwargs):
+            lines = []
+            hypothesis.internal.observability.TESTCASE_CALLBACKS.append(  # type: ignore
+                lambda test_case: lines.append(test_case))
+            f()
+            try:
+                with open("testcases.jsonl", "a") as handle:
+                    for line in lines:
+                        handle.write(json.dumps(line) + "\n")
+            except Exception as e:
+                print(e)
                 pass  # TODO
 
         return wrapper
