@@ -17,6 +17,10 @@ class Tree(ABC):
         pass
 
     @abstractmethod
+    def lean(self) -> str:
+        pass
+
+    @abstractmethod
     def insert(self, x: int) -> "Tree":
         pass
 
@@ -55,6 +59,14 @@ class Node(Tree):
 
     def balanced(self):
         return abs(self.left.depth() - self.right.depth()) <= 1
+
+    def lean(self):
+        if self.left.depth() > self.right.depth():
+            return "left"
+        elif self.left.depth() < self.right.depth():
+            return "right"
+        else:
+            return "none"
 
     def insert(self, x: int) -> "Tree":
         if x < self.value:
@@ -104,6 +116,9 @@ class Leaf(Tree):
 
     def balanced(self):
         return True
+
+    def lean(self):
+        return "none"
 
     def insert(self, x: int) -> "Tree":
         return Node(x, Leaf(), Leaf())

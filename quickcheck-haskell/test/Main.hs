@@ -5,112 +5,96 @@
 module Main (main) where
 
 import Data.Aeson
-  ( Options (fieldLabelModifier),
+  ( Options (fieldLabelModifier, sumEncoding),
+    SumEncoding (UntaggedValue),
     ToJSON (toEncoding),
     defaultOptions,
     encode,
     genericToEncoding,
   )
-import Data.IORef (modifyIORef, newIORef, readIORef)
+import qualified Data.ByteString.Lazy.Char8 as BSL
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import GHC.Generics (Generic)
-import GHC.IORef (IORef)
 import MyLib
-import Network.WebSockets (runClient, sendTextData)
+import System.Directory (createDirectoryIfMissing)
 import Test.QuickCheck
+import Test.QuickCheck.Property (Callback (PostTest), CallbackKind (NotCounterexample), Result (ok), callback)
 
-data SampleInfo = SampleInfo
-  { _item :: String,
-    _features :: Map String Int,
-    _bucketings :: Map String String
+data FeatureData
+  = IntData Int
+  | StringData String
+  deriving (Generic, Show)
+
+instance ToJSON FeatureData where
+  toEncoding =
+    genericToEncoding
+      ( defaultOptions
+          { fieldLabelModifier = drop 1,
+            sumEncoding = UntaggedValue
+          }
+      )
+
+data TestCaseLine = TestCaseLine
+  { _type :: String,
+    _run_start :: Double,
+    _property :: String,
+    _status :: String,
+    _status_reason :: String,
+    _representation :: String,
+    _features :: Map String FeatureData,
+    _coverage :: Maybe ()
   }
   deriving (Generic, Show)
 
-instance ToJSON SampleInfo where
-  toEncoding = genericToEncoding (defaultOptions {fieldLabelModifier = drop 1})
-
-data CoverageItem = CoverageItem
-  { _covered :: [Int],
-    _missedLines :: [Int]
-  }
-  deriving (Generic, Show)
-
-instance ToJSON CoverageItem where
-  toEncoding = genericToEncoding (defaultOptions {fieldLabelModifier = drop 1})
-
-data TestInfo
-  = PropertyPassed
-      { _outcome :: String,
-        _samples :: [SampleInfo],
-        _coverage :: Map String CoverageItem
-      }
-  | PropertyFailed
-      { _message :: String,
-        _outcome :: String
-      }
-  deriving (Generic, Show)
-
-instance ToJSON TestInfo where
-  toEncoding = genericToEncoding (defaultOptions {fieldLabelModifier = drop 1})
-
-newtype Report = Report {_properties :: Map String TestInfo}
-  deriving (Generic, Show)
-
-instance ToJSON Report where
-  toEncoding = genericToEncoding (defaultOptions {fieldLabelModifier = drop 1})
-
-data Request = Request {_type :: String, _report :: Report}
-  deriving (Generic, Show)
-
-instance ToJSON Request where
+instance ToJSON TestCaseLine where
   toEncoding = genericToEncoding (defaultOptions {fieldLabelModifier = drop 1})
 
 class (Show a) => Reportable a where
-  extractFeatures :: a -> Map String Int
-  extractBucketings :: a -> Map String String
-
-visualize :: (Reportable a) => [a] -> TestInfo
-visualize items =
-  PropertyPassed
-    { _outcome = "propertyPassed",
-      _samples = map toSampleInfo items,
-      _coverage = M.empty
-    }
-  where
-    toSampleInfo i =
-      SampleInfo
-        { _item = show i,
-          _features = extractFeatures i,
-          _bucketings = extractBucketings i
-        }
+  extractOrdinal :: a -> Map String Int
+  extractNominal :: a -> Map String String
 
 quickCheckVis :: (Reportable a, Arbitrary a) => String -> Gen a -> (a -> Property) -> IO ()
 quickCheckVis name g prop = do
-  examples <- newIORef []
-  res <- quickCheckResult (forAll g $ newProp examples prop)
-  report <- case res of
-    Success {} -> do
-      exs <- readIORef examples
-      return $ Report (M.fromList [(name, visualize exs)])
-    e -> return $ Report (M.fromList [(name, PropertyFailed (show e) "propertyFailed")])
-  let request = Request {_type = "success", _report = report}
-  runClient "localhost" 8181 "/" (\conn -> sendTextData conn (encode request))
+  createDirectoryIfMissing True ".quickcheck/observations"
+  runStart <- fromRational . toRational <$> getPOSIXTime
+  quickCheck (forAll g $ newProp runStart prop)
   where
-    newProp :: (Reportable a) => IORef [a] -> (a -> Property) -> a -> Property
-    newProp examples p a = ioProperty (modifyIORef examples (a :) >> return (p a))
+    newProp runStart p a = do
+      callback
+        ( PostTest
+            NotCounterexample
+            ( \_ res ->
+                BSL.appendFile (".quickcheck/observations/" ++ name ++ ".jsonl") . flip BSL.snoc '\n' . encode $
+                  TestCaseLine
+                    { _type = "test_case",
+                      _run_start = runStart,
+                      _property = name,
+                      _status = case ok res of
+                        Nothing -> "gave_up"
+                        Just True -> "passed"
+                        Just False -> "failed",
+                      _status_reason = "",
+                      _representation = show a,
+                      _features = M.union (fmap IntData (extractOrdinal a)) (fmap StringData (extractNominal a)),
+                      _coverage = Nothing
+                    }
+            )
+        )
+        (p a)
 
 instance Reportable Int where
-  extractFeatures _ = M.empty
-  extractBucketings _ = M.empty
+  extractOrdinal _ = M.empty
+  extractNominal _ = M.empty
 
 instance Reportable Tree where
-  extractFeatures t = M.fromList [("size", size t)]
-  extractBucketings t = M.fromList [("isBST", show (isBST t))]
+  extractOrdinal t = M.fromList [("size", size t)]
+  extractNominal t = M.fromList [("isBST", show (isBST t))]
 
 instance (Reportable a, Reportable b) => Reportable (a, b) where
-  extractFeatures (a, b) = M.union (extractFeatures a) (extractFeatures b)
-  extractBucketings (a, b) = M.union (extractBucketings a) (extractBucketings b)
+  extractOrdinal (a, b) = M.union (extractOrdinal a) (extractOrdinal b)
+  extractNominal (a, b) = M.union (extractNominal a) (extractNominal b)
 
 instance Arbitrary Tree where
   arbitrary = aux (3 :: Int)
@@ -145,4 +129,4 @@ genBST (lo, hi) =
 main :: IO ()
 main = do
   quickCheckVis "prop_insert_valid" arbitrary $ \(x, t) -> isBST t ==> isBST (insert x t)
-  quickCheckVis "prop_insert_valid'" ((,) <$> arbitrary <*> genBST (-10, 10)) $ \(x, t) -> isBST t ==> isBST (insert x t)
+  quickCheckVis "prop_insert_valid_ok" ((,) <$> arbitrary <*> genBST (-10, 10)) $ \(x, t) -> isBST t ==> isBST (insert x t)
