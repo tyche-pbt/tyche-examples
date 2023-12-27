@@ -21,3 +21,10 @@ insert x (Node l y r)
 size :: Tree -> Int
 size Leaf = 0
 size (Node l _ r) = 1 + size l + size r
+
+member :: Int -> Tree -> Bool
+member _ Leaf = False
+member x (Node l y r)
+  | x < y = member x l
+  | x > y = member x r
+  | otherwise = True
