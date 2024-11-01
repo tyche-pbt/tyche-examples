@@ -1,6 +1,7 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Main (main) where
+module Main where
 
 import MyLib
 import Test.QuickCheck
@@ -36,22 +37,26 @@ genBST (lo, hi) =
       )
     ]
 
-prop_insert_valid :: Property
-prop_insert_valid =
+prop_insertValid :: Property
+prop_insertValid =
   Tyche.visualize "prop_insert_valid" $
     forAll ((,) <$> arbitrary <*> genBST (-10, 10)) $ \(x, t) ->
       label ("size:" ++ show (size t)) $
         isBST (insert x t)
 
-prop_insert_post :: Int -> Tree -> Property
-prop_insert_post x t =
+prop_insertPost :: Int -> Tree -> Property
+prop_insertPost x t =
   Tyche.visualize "prop_insert_post" $
-    label ("value:" ++ show x) $
-      isBST t ==>
-        member x (insert x t)
+    label ("size:" ++ show (size t)) $
+      label ("value:" ++ show x) $
+        isBST t ==>
+          member x (insert x t)
 
-main :: IO ()
-main = do
-  quickCheck prop_insert_valid
-  Tyche.visualizeResult "prop_insert_post"
-    =<< quickCheckResult prop_insert_post
+return []
+
+main :: IO Bool
+main = $quickCheckAll
+
+-- quickCheck prop_insertValid
+-- Tyche.visualizeResult "prop_insertPost"
+--   =<< quickCheckResult prop_insertPost
